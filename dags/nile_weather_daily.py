@@ -31,7 +31,7 @@ with DAG(
     description="Load yesterday's weather for every Nile Basket city into PostgreSQL",
     schedule="0 6 * * *",  # cron: minute 0, hour 6, every day
     start_date=pendulum.datetime(2026, 11, 1, tz="Africa/Cairo"),
-    catchup=False,  # don't automatically run every missed day since start_date
+    catchup=True,  # don't automatically run every missed day since start_date
     default_args={
         "retries": 2,  # the API is down for a minute? try again
         "retry_delay": timedelta(minutes=5),
