@@ -1,0 +1,4 @@
+# Extra libraries pipeline/extract_load.py needs inside the Airflow containers
+# (requests is already part of the Airflow image)
+psycopg[binary]>=3.1
+python-dotenv>=1.0

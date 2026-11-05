@@ -1,3 +1,31 @@
+# Settings shared by every Airflow container.
+# "&airflow-common" names this block; "<<: *airflow-common" pastes it into a service below.
+x-airflow-common: &airflow-common
+  build: .
+  image: nile-airflow:3.3.1
+  environment:
+    # --- Airflow itself ---
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Africa/Cairo
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "true"  # local only: no login screen
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET}
+    AIRFLOW__API__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
+    AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"  # look for new DAG files every 30 seconds
+    # --- our pipeline (read by pipeline/extract_load.py) ---
+    # Inside Docker, the database is reached by its service name, not localhost
+    POSTGRES_HOST: postgres
+    POSTGRES_PORT: "5432"
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    POSTGRES_DB: ${POSTGRES_DB}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - .:/opt/airflow/project:ro
+
 services:
   postgres:
     image: postgres:16
@@ -17,6 +45,53 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+
+  # Runs once: creates/updates Airflow's own tables in the "airflow" database, then exits
+  airflow-init:
+    <<: *airflow-common
+    container_name: nile_airflow_init
+    command: db migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The web UI and the API the other components talk to
+  airflow-apiserver:
+    <<: *airflow-common
+    container_name: nile_airflow_apiserver
+    command: api-server
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/api/v2/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # Decides WHEN each task should run, and runs it (LocalExecutor)
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: nile_airflow_scheduler
+    command: scheduler
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # Reads the files in dags/ and turns them into DAGs Airflow knows about
+  airflow-dag-processor:
+    <<: *airflow-common
+    container_name: nile_airflow_dag_processor
+    command: dag-processor
+    restart: unless-stopped
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
 
 volumes:
   pgdata:

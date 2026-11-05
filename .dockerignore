@@ -1,0 +1,8 @@
+# Files Docker should NOT send when building the image (keeps the build fast and small)
+.venv/
+.git/
+logs/
+__pycache__/
+.pytest_cache/
+.vscode/
+.env
