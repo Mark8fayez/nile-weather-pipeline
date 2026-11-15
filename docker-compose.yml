@@ -46,11 +46,13 @@ services:
       retries: 10
     restart: unless-stopped
 
-  # Runs once: creates/updates Airflow's own tables in the "airflow" database, then exits
+  # Runs once, then exits:
+  #   1. creates/updates Airflow's own tables in the "airflow" database
+  #   2. applies our own schema migrations (sql/migrations) to the "weather" database
   airflow-init:
     <<: *airflow-common
     container_name: nile_airflow_init
-    command: db migrate
+    command: bash -c "airflow db migrate && cd /opt/airflow/project && python -m pipeline.migrate"
     depends_on:
       postgres:
         condition: service_healthy
